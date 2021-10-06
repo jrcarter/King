@@ -1,0 +1,307 @@
+-- King version of MP: a Music Player
+-- Copyright (C) 2021 by PragmAda Software Engineering.  All rights reserved.
+-- Licensed under CC BY-NC-SA 4.0. See http://creativecommons.org/licenses/by-nc-sa/4.0/
+
+use King.GUI;
+use King.GUI.Check_Boxes;
+use King.Gui.Media_Control;
+use King.GUI.Widgets;
+use King.GUI.Selection_Lists;
+use King.GUI.Text_Operations;
+use King.IO;
+use King.IO.Directories;
+use King.IO.Text;
+use King.Algorithms.Numerics.Random.Unsigned_4;
+use King.Algorithms.Numerics.Random.Unsigned_4_Ranges;
+
+MP : procedure body is
+   type Path_List is set of String;
+
+   type Song_Info is record
+      Position : Position_Value;
+      Path     : String;
+   end record Song_Info;
+
+   type Song_List is sequence of Song_Info;
+
+   Add_Song : procedure;
+   -- Adds Path to List if Path is not null
+
+   Browse_Songs : procedure;
+   -- Displays a file-selection dialog and allows selection of a file in the current directory or below
+   -- If a file is selected, puts its name relative to the current directory in Path
+
+   Delete_Song : procedure;
+   -- Deletes the currently selected song
+
+   Quit_Now : procedure;
+   -- Tears down the GUI and saves the playlist
+
+   Refresh : procedure;
+   -- Shuffles List into Song and updates Count
+
+   Start : function (Song : in String) return Boolean;
+   -- Tries to start playing a file named Song
+   -- Returns True if successful; False otherwise
+
+   List : Path_List;
+   Song : Song_List;
+
+   Player     : King.GUI.Widget_ID;
+   Sel        : King.GUI.Widget_ID;
+   Count      : King.GUI.Widget_ID;
+   Delete     : King.GUI.Widget_ID;
+   Path       : King.GUI.Widget_ID;
+   Browse     : King.GUI.Widget_ID;
+   Add        : King.GUI.Widget_ID;
+   Play       : King.GUI.Widget_ID;
+   Skip       : King.GUI.Widget_ID;
+   Quit       : King.GUI.Widget_ID;
+   Quit_After : King.GUI.Widget_ID;
+   Event      : King.GUI.Event_Info;
+
+   Current : Song_Info;
+   Index   : Position_Value is 1;
+   Gen     : King.Algorithms.Numerics.Random.Unsigned_4.Generator;
+
+   Add_Song : procedure body is
+      Name : constant String is King.Gui.Text_Operations.Text (Path);
+   Add_Song : begin
+      return when Name = "";
+
+      if not King.Gui.Media_Control.Playback_Ended (Player) then
+         King.Gui.Media_Control.Pause (ID => Player);
+      end if;
+
+      List <- List + {Name};
+      Refresh;
+      King.Gui.Text_Operations.Set_Text (ID => Path, Text => "");
+
+      if King.Gui.Media_Control.Paused (Player) then
+         King.Gui.Media_Control.Play (ID => Player);
+      end if;
+   Add_Song : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Add_Song " & Error.Information);
+   Add_Song : end procedure;
+
+   Current_Directory : constant String is King.IO.Directories.Current_Directory;
+
+   Browse_Songs : procedure body is
+      Pick : King.GUI.File_Info is King.GUI.Selected_File (Current_Directory);
+   Browse_Songs : begin
+      return when not Pick.Picked;
+
+      if Pick.Name.Prefix (Current_Directory) then -- Delete Current_Directory prefix
+         Pick.Name <- Pick.Name [Current_Directory.Length + 1 .. Pick.Name'Length];
+         King.Gui.Text_Operations.Set_Text (ID => Path, Text => Pick.Name);
+      end if;
+   Browse_Songs : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Browse_Songs " & Error.Information);
+   Browse_Songs : end procedure;
+
+   Delete_Song : procedure body is
+      null;
+   Delete_Song : begin
+      return when King.Gui.Selection_Lists.Selected (Sel) = 0;
+
+      if not King.Gui.Media_Control.Playback_Ended (Player) then
+         King.Gui.Media_Control.Pause (ID => Player);
+      end if;
+
+      List <- List - {King.Gui.Text_Operations.Text (Sel)};
+      Refresh;
+
+      if King.Gui.Media_Control.Paused (Player) then
+         King.Gui.Media_Control.Play (ID => Player);
+      end if;
+   Delete_Song : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Delete_Song " & Error.Information);
+   Delete_Song : end procedure;
+
+   Playlist = "playlist.mpl";
+
+   Quit_Now : procedure body is
+      List_File : King.IO.File_Handle;
+   Quit_Now : begin
+      King.GUI.Set_Title (Title => "MP");
+      King.GUI.Tear_Down;
+
+      -- Create file Playlist and write List into it
+      List_File.Create (Name => Playlist, Mode => Out_File);
+
+      Write_All : for Name of List loop
+         King.IO.Text.Put_Line (Item => Name, File => List_File);
+      Write_All : end loop;
+
+      List_File.Close;
+   Quit_Now : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Quit_Now " & Error.Information);
+   Quit_Now : end procedure;
+
+   Refresh : procedure body is
+      Random : function (Min : in Position_Value; Max : in Position_Value) return Position_Value is
+         (declare
+             subtype U4 is King.Algorithms.Numerics.Random.Unsigned_4.U4;
+          begin
+             Position_Value (King.Algorithms.Numerics.Random.Unsigned_4.Ranges.Random (Gen.Random, U4 (Min), U4 (Max) ) ) )
+      with
+         Precondition => Min <= Max and Max <= King.Algorithms.Numerics.Random.Unsigned_4.U4'Last;
+
+      Index : Position_Value is 1;
+      Temp  : Song_Info;
+   Refresh : begin
+      Song <- [1 .. 0 => <>];
+      King.Gui.Selection_Lists.Clear (ID => Sel);
+
+      Insert_All : for Name of List loop
+         King.Gui.Selection_Lists.Insert (ID => Sel, Text => Name, Before => Sel.Num_Options + 1);
+         Song <- Song & Song_Info'(Position => Index, Path => Name);
+         Index <- Index + 1;
+      end loop Insert_All;
+
+      Shuffle : for I in Song'range loop
+         Index <- Random (I, Song'Length);
+         Temp <- Song [I];
+         Song [I] <- Song [Index];
+         Song [Index] <- Temp;
+      Shuffle : end loop;
+
+      King.Gui.Text_Operations.Set_Text (ID => Count, Text => Sel.Num_Options'Image);
+   Refresh : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Refresh " & Error.Information);
+   Refresh : end procedure;
+
+   Start : function (Song : in String) return Boolean body is
+      null;
+   Start : begin
+      King.Gui.Media_Control.Set_Source (ID => Player, Source => Song);
+      King.GUI.Set_Title (Title => "MP " & Song);
+
+      Wait_For_Ready : for I in Integer range 1 .. 10 loop
+         if King.Gui.Media_Control.Ready (Player) then
+            King.Gui.Media_Control.Play (ID => Player);
+
+            return True;
+         end if;
+
+         wait of 0.01;
+      end loop Wait_For_Ready;
+
+      return False;
+   Start : exception
+   when Error : others =>
+      King.IO.Text.Put_Line (Item => "Start " & Error.Information);
+   Start : end function;
+
+   List_File : King.IO.File_Handle;
+MP : begin
+   Gen.Randomize;
+   King.GUI.Set_Up;
+   King.GUI.Set_Title (Title => "MP");
+   Player     <- King.GUI.Widgets.New_Audio_Player (1, 1);
+   Sel        <- King.GUI.Widgets.New_Selection_List (1, 1, Below => True, Height => 30);
+   Count      <- King.GUI.Widgets.New_Text_Box (1, 1, Label => "Number of songs:", Below => True);
+   Delete     <- King.GUI.Widgets.New_Button (1, 1, Text => "Delete", Below => True);
+   Path       <- King.GUI.Widgets.New_Text_Box (1, 1, Width => 100);
+   Browse     <- King.GUI.Widgets.New_Button (1, 1, Text => "Browse");
+   Add        <- King.GUI.Widgets.New_Button (1, 1, Text => "Add");
+   Play       <- King.GUI.Widgets.New_Button (1, 1, Text => "Play", Below => True);
+   Skip       <- King.GUI.Widgets.New_Button (1, 1, Text => "Skip");
+   Quit       <- King.GUI.Widgets.New_Button (1, 1, Text => "Quit");
+   Quit_After <- King.GUI.Widgets.New_Check_Box (1, 1, Label => "Quit after this song");
+
+   -- If there's a file named Playlist, open it and read it into List
+   if King.IO.Directories.Exists (Playlist) then
+      List_File.Open (Name => Playlist, Mode => In_File);
+
+      Read_All : loop
+         exit Read_All when List_File.End_Of_File;
+
+         List <- List + {King.IO.Text.Get_Line (List_File)};
+      end loop Read_All;
+
+      List_File.Close;
+   end if;
+
+   Refresh;
+
+   -- Now we're ready to go
+
+   -- If Song is empty, we wait until a song is added or the user clicks on Quit, ignoring other buttons
+   Wait_For_Song : loop
+      exit Wait_For_Song when List.Size > 0;
+
+      Add_Or_Quit : select
+         Event <- King.GUI.Event_Queue.Get;
+
+         if Event.ID = Add then
+            Add_Song;
+         else_if Event.ID = Browse then
+            Browse_Songs;
+         else_if Event.ID = Quit then
+            Quit_Now;
+
+            return;
+         else
+            null;
+         end if;
+      Add_Or_Quit : or
+         wait of 0.1;
+      Add_Or_Quit : end select;
+   Wait_For_Song : end loop;
+
+   Forever : loop
+      Current <- Song [Index];
+      King.GUI.Selection_Lists.Set_Selected (ID => Sel, Index => Index, Selected => True);
+
+      if Start (Current.Path) then
+         Wait_For_End : loop
+            Get_Event : select
+               Event <- King.GUI.Event_Queue.Get;
+
+               if Event.ID = Play then
+                  exit Wait_For_End when not Start (King.GUI.Text_Operations.Text (Sel) );
+               else_if Event.ID = Skip then
+                  King.GUI.Set_Title (Title => "MP");
+
+                  exit Wait_For_End;
+               else_if Event.ID = Quit then
+                  Quit_Now;
+
+                  return;
+               else_if Event.ID = Add then
+                  Add_Song;
+               else_if Event.ID = Browse then
+                  Browse_Songs;
+               else_if Event.ID = Delete then
+                  Delete_Song;
+               else
+                  null;
+               end if;
+            Get_Event : or
+               wait of 0.1;
+
+               exit Wait_For_End when King.GUI.Media_Control.Playback_Ended (Player);
+            Get_Event : end select;
+         Wait_For_End : end loop;
+      end if;
+
+      exit Forever when King.GUI.Check_Boxes.Active (Quit_After);
+
+      Index <- Index + 1;
+
+      if Index > Song'Length then
+         Index <- 1;
+      end if;
+   end loop Forever;
+MP : exception
+when others =>
+   if King.GUI.Set_Up then
+      Quit_Now;
+   end if;
+MP : end procedure;
