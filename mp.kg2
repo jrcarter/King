@@ -1,5 +1,5 @@
 -- King version of MP: a Music Player
--- Copyright (C) 2021 by PragmAda Software Engineering.  All rights reserved.
+-- Copyright (C) 2023 by PragmAda Software Engineering.  All rights reserved.
 -- Licensed under CC BY-NC-SA 4.0. See http://creativecommons.org/licenses/by-nc-sa/4.0/
 
 use King.GUI;
@@ -80,8 +80,7 @@ MP : procedure body is
       if King.Gui.Media_Control.Paused (Player) then
          King.Gui.Media_Control.Play (ID => Player);
       end if;
-   Add_Song : exception
-   when Error : others =>
+   Add_Song : when Error =>
       King.IO.Text.Put_Line (Item => "Add_Song " & Error.Information);
    Add_Song : end procedure;
 
@@ -96,8 +95,7 @@ MP : procedure body is
          Pick.Name <- Pick.Name [Current_Directory.Length + 1 .. Pick.Name'Length];
          King.Gui.Text_Operations.Set_Text (ID => Path, Text => Pick.Name);
       end if;
-   Browse_Songs : exception
-   when Error : others =>
+   Browse_Songs : when Error =>
       King.IO.Text.Put_Line (Item => "Browse_Songs " & Error.Information);
    Browse_Songs : end procedure;
 
@@ -116,8 +114,7 @@ MP : procedure body is
       if King.Gui.Media_Control.Paused (Player) then
          King.Gui.Media_Control.Play (ID => Player);
       end if;
-   Delete_Song : exception
-   when Error : others =>
+   Delete_Song : when Error =>
       King.IO.Text.Put_Line (Item => "Delete_Song " & Error.Information);
    Delete_Song : end procedure;
 
@@ -137,8 +134,7 @@ MP : procedure body is
       Write_All : end loop;
 
       List_File.Close;
-   Quit_Now : exception
-   when Error : others =>
+   Quit_Now : when Error =>
       King.IO.Text.Put_Line (Item => "Quit_Now " & Error.Information);
    Quit_Now : end procedure;
 
@@ -171,8 +167,7 @@ MP : procedure body is
       Shuffle : end loop;
 
       King.Gui.Text_Operations.Set_Text (ID => Count, Text => Sel.Num_Options'Image);
-   Refresh : exception
-   when Error : others =>
+   Refresh : when Error =>
       King.IO.Text.Put_Line (Item => "Refresh " & Error.Information);
    Refresh : end procedure;
 
@@ -193,8 +188,7 @@ MP : procedure body is
       end loop Wait_For_Ready;
 
       return False;
-   Start : exception
-   when Error : others =>
+   Start : when Error =>
       King.IO.Text.Put_Line (Item => "Start " & Error.Information);
    Start : end function;
 
@@ -299,8 +293,7 @@ MP : begin
          Index <- 1;
       end if;
    end loop Forever;
-MP : exception
-when others =>
+MP : when E =>
    if King.GUI.Set_Up then
       Quit_Now;
    end if;
